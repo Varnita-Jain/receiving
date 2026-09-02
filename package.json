@@ -42,6 +42,8 @@
     "typescript": "catalog:",
     "vite": "catalog:",
     "vite-plugin-pwa": "catalog:",
-    "vitest": "catalog:"
+    "vitest": "catalog:",
+    "@playwright/test": "^1.61.1",
+    "@types/node": "^26.4.1"
   }
 }
