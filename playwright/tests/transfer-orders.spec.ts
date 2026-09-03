@@ -325,11 +325,12 @@ test.describe('Transfer Orders Module', () => {
           console.log(`  → Toast notification: "${toastMessage}"`);
         }
 
-        // Strict validation: Fail test case if backend returns error or error toast appears
+        // Validate if backend returns error or error toast appears (only if caught)
         if (result.status > 0) {
           expect(result.status, `Backend receipt API failed with status ${result.status}: ${JSON.stringify(result.body)}`).toBeLessThan(400);
           expect(result.body?.errors, `OMS returned backend error: ${result.body?.errors}`).toBeFalsy();
         }
+        
         if (toastMessage) {
           expect(toastMessage.toLowerCase(), `Error toast displayed: "${toastMessage}"`).not.toContain('error');
         }
@@ -350,6 +351,7 @@ test.describe('Transfer Orders Module', () => {
         await expect(firstCardInAll).toBeVisible({ timeout: 10000 });
         const receivedText = await toDetail.getFirstItemReceivedQtyText();
         console.log(`  → Received status in All section: "${receivedText}"`);
+        expect(receivedText.toLowerCase(), 'Item was not correctly marked as received').toContain('received');
       });
 
       console.log('✔ [PASSED] TC-06: Receive All workflow verified.\n');
@@ -408,11 +410,12 @@ test.describe('Transfer Orders Module', () => {
           console.log(`  → Toast notification: "${toastMessage}"`);
         }
 
-        // Strict validation: Fail test case if backend returns error or error toast appears
+        // Validate if backend returns error or error toast appears (only if caught)
         if (result.status > 0) {
           expect(result.status, `Backend receipt API failed with status ${result.status}: ${JSON.stringify(result.body)}`).toBeLessThan(400);
           expect(result.body?.errors, `OMS returned backend error: ${result.body?.errors}`).toBeFalsy();
         }
+        
         if (toastMessage) {
           expect(toastMessage.toLowerCase(), `Error toast displayed: "${toastMessage}"`).not.toContain('error');
         }
@@ -434,6 +437,7 @@ test.describe('Transfer Orders Module', () => {
         await expect(toDetail.itemCards.first()).toBeVisible({ timeout: 10000 });
         const receivedText = await toDetail.getFirstItemReceivedQtyText();
         console.log(`  → Received status in All section: "${receivedText}"`);
+        expect(receivedText.toLowerCase(), 'Item was not correctly marked as received').toContain('received');
       });
 
       console.log('✔ [PASSED] TC-07: Save Progress partial receiving workflow verified.\n');
@@ -551,16 +555,22 @@ test.describe('Transfer Orders Module', () => {
         const qtyInputs = page.locator('main ion-card ion-input input, input[type="number"]');
         const count = await qtyInputs.count();
         for (let i = 0; i < count; i++) {
-          await qtyInputs.nth(i).clear();
-          await qtyInputs.nth(i).dispatchEvent('ionInput', { target: { value: '' } }).catch(() => {});
-          await qtyInputs.nth(i).dispatchEvent('ionChange', { target: { value: '' } }).catch(() => {});
+          const input = qtyInputs.nth(i);
+          await input.click();
+          // Simulate a human pressing backspace to guarantee Ionic catches the event
+          for (let j = 0; j < 5; j++) {
+            await input.press('Backspace');
+          }
+          await page.waitForTimeout(100);
         }
+        // Blur the input to ensure Ionic footer reappears (closes virtual keyboard state)
+        await page.mouse.click(0, 0);
+        await page.waitForTimeout(500);
       });
 
-      await test.step('2. Click Save Progress button', async () => {
-        console.log('  → Triggering Save Progress with empty quantities...');
-        await expect(toDetail.saveProgressBtn).toBeVisible();
-        await toDetail.clickSaveProgress();
+      await test.step('2. Click Receive and Complete button', async () => {
+        console.log('  → Triggering Receive and Complete with empty quantities...');
+        await toDetail.clickReceiveAndComplete();
         await page.waitForTimeout(1000);
       });
 
@@ -568,32 +578,19 @@ test.describe('Transfer Orders Module', () => {
         console.log('  → Checking validation alert...');
         const alert = page.locator('ion-alert, .alert-wrapper').filter({ hasText: /Specify quantity|Receiving/i }).or(page.locator('ion-alert:visible'));
         
-        const isAlertVisible = await alert.first().isVisible({ timeout: 8000 }).catch(() => false);
-        if (isAlertVisible) {
-          const alertText = await alert.first().textContent().catch(() => '');
-          console.log(`  → Validation alert text: "${alertText?.replace(/\s+/g, ' ').trim()}"`);
+        await expect(alert.first(), 'Validation alert for empty quantity was not displayed').toBeVisible({ timeout: 8000 });
+        
+        const alertText = await alert.first().textContent().catch(() => '');
+        console.log(`  → Validation alert text: "${alertText?.replace(/\s+/g, ' ').trim()}"`);
+        expect(alertText?.toLowerCase(), 'Validation alert does not mention quantity').toContain('quantity');
 
-          console.log('  → Pausing 5 seconds so alert is clearly visible in headed mode...');
-          await page.waitForTimeout(5000); // Visual pause to view the alert
+        console.log('  → Pausing 5 seconds so alert is clearly visible in headed mode...');
+        await page.waitForTimeout(5000); // Visual pause to view the alert
 
-          const okBtn = alert.locator('button:has-text("OK"), button:has-text("Ok"), button.alert-button').first();
-          if (await okBtn.isVisible().catch(() => false)) {
-            await okBtn.click({ force: true });
-            await page.waitForTimeout(1000);
-          }
-        } else {
-          console.log('  → Trying Receive and complete button...');
-          await toDetail.clickReceiveAndComplete();
+        const okBtn = alert.locator('button:has-text("OK"), button:has-text("Ok"), button.alert-button').first();
+        if (await okBtn.isVisible().catch(() => false)) {
+          await okBtn.click({ force: true });
           await page.waitForTimeout(1000);
-          const alertFallback = page.locator('ion-alert, .alert-wrapper').filter({ hasText: /Specify quantity|Receiving/i }).or(page.locator('ion-alert:visible'));
-          if (await alertFallback.first().isVisible({ timeout: 5000 }).catch(() => false)) {
-            console.log('  → Pausing 5 seconds so alert is clearly visible in headed mode...');
-            await page.waitForTimeout(5000);
-            const okBtn = alertFallback.locator('button:has-text("OK"), button:has-text("Ok"), button.alert-button').first();
-            if (await okBtn.isVisible().catch(() => false)) {
-              await okBtn.click({ force: true });
-            }
-          }
         }
       });
 
@@ -635,6 +632,7 @@ test.describe('Transfer Orders Module', () => {
 
       await test.step('2. Click Receive and complete and confirm submission', async () => {
         console.log('  → Clicking Receive and complete button...');
+        await toDetail.fillAllEmptyQuantitiesWithZero();
         await expect(toDetail.receiveAndCompleteBtn).toBeVisible();
         await toDetail.clickReceiveAndComplete();
         await page.waitForTimeout(1000);
@@ -670,11 +668,12 @@ test.describe('Transfer Orders Module', () => {
           console.log(`  → Toast notification: "${toastMessage}"`);
         }
 
-        // Strict validation: Fail test case if backend returns error or error toast appears
+        // Validate if backend returns error or error toast appears (only if caught)
         if (result.status > 0) {
           expect(result.status, `Backend receipt API failed with status ${result.status}: ${JSON.stringify(result.body)}`).toBeLessThan(400);
           expect(result.body?.errors, `OMS returned backend error: ${result.body?.errors}`).toBeFalsy();
         }
+        
         if (toastMessage) {
           expect(toastMessage.toLowerCase(), `Error toast displayed: "${toastMessage}"`).not.toContain('error');
         }
@@ -699,6 +698,7 @@ test.describe('Transfer Orders Module', () => {
         await expect(firstCardInAll).toBeVisible({ timeout: 10000 });
         const receivedText = await toDetail.getFirstItemReceivedQtyText();
         console.log(`  → Final order status in All section: "${receivedText}"`);
+        expect(receivedText.toLowerCase(), 'Item was not correctly marked as received').toContain('received');
       });
 
       console.log('✔ [PASSED] TC-11: Receive and complete workflow verified.\n');

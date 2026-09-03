@@ -261,4 +261,19 @@ export class TransferOrderDetailPage {
     }
     return { status: 0, body: null, url: '' };
   }
+  async fillAllEmptyQuantitiesWithZero() {
+    const qtyInputs = this.page.locator('main ion-card ion-input input, input[type="number"]');
+    const count = await qtyInputs.count();
+    for (let i = 0; i < count; i++) {
+      const input = qtyInputs.nth(i);
+      const val = await input.inputValue();
+      if (!val) {
+        await input.fill('0');
+        await input.dispatchEvent('input');
+        await input.dispatchEvent('change');
+      }
+    }
+    await this.page.waitForTimeout(500);
+  }
 }
+
